@@ -1,0 +1,33 @@
+version: '3.5'
+
+services:
+  db_go_proj:
+    restart: always
+    container_name: db_go_proj
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_USER=admin
+      - POSTGRES_DB=mydatabase
+      - TZ=Europe/Moscow
+    image: postgres:15.5-alpine3.18
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+
+  nats-streaming:
+    image: nats-streaming:alpine3.18
+    container_name: nats-streaming
+    ports:
+      - "4222:4222" # Клиентский порт
+      - "8222:8222" # Мониторинг
+    environment:
+      - TZ=Europe/Moscow
+    command: "-p 4222 -m 8222 --store file --dir /data --cluster_id my_cluster"
+    volumes:
+      - nats_storage:/data
+
+volumes:
+  postgres_data:
+  nats_storage:
