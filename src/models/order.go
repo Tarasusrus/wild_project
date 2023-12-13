@@ -7,18 +7,18 @@ import (
 
 type Order struct {
 	gorm.Model
-	OrderUID          string `gorm:"uniqueIndex" json:"OrderUID"` // PK
-	TrackNumber       string `json:"TrackNumber"`
-	Entry             string `json:"Entry"`
-	Delivery          Delivery
-	Payment           Payment
-	Items             []Items
-	Locale            string `json:"Locale"`
-	InternalSignature string `json:"InternalSignature"`
-	CustomerID        string `json:"CustomerID"`
-	DeliveryService   string `json:"DeliveryService"`
-	Shardkey          string `json:"Shardkey"`
-	SmID              string `json:"SmID"`
+	OrderUID          string   `gorm:"uniqueIndex" json:"OrderUID"` // PK
+	TrackNumber       string   `json:"TrackNumber"`
+	Entry             string   `json:"Entry"`
+	Delivery          Delivery `json:"delivery"`
+	Payment           Payment  `json:"payment"`
+	Items             []Items  `json:"items"`
+	Locale            string   `json:"Locale"`
+	InternalSignature string   `json:"InternalSignature"`
+	CustomerID        string   `json:"CustomerID"`
+	DeliveryService   string   `json:"DeliveryService"`
+	Shardkey          string   `json:"Shardkey"`
+	SmID              string   `json:"SmID"`
 	DateCreated       time.Time
 	OofShard          string `json:"OofShard"`
 }
