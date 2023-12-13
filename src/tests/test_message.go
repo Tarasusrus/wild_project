@@ -58,7 +58,7 @@ var TESTMESSAGE = `{
   }
 `
 
-func GenerateTestMessages(count int) ([]string, error) {
+func GenerateTestMessages(count int) ([]string, error) { // todo надо реализовать все поля, будет удобнее тестировать
 	var messages []string
 	for i := 0; i < count; i++ {
 		order := models.Order{

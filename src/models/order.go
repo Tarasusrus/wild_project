@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// todo надо посмотреть как выставить ограничения not null uniq и тд будет проще тестировать
 type Order struct {
 	gorm.Model
 	OrderUID          string   `gorm:"uniqueIndex" json:"OrderUID"` // PK

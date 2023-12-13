@@ -47,3 +47,5 @@ func (oc *OrderCache) SaveToDB(db *gorm.DB, order models.Order, logger *log.Logg
 	}
 	return nil
 }
+
+// todo надо еще тащить заказ из кеша и залогировать это, еще сделать логи по папкам в одной портянке будет тяжело разобраться

@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// todo ну это пизда, надо переделывать
 type GormLoggerAdapter struct {
 	*log.Logger
 	logLevel logger.LogLevel

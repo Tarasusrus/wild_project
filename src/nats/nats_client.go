@@ -9,6 +9,7 @@ import (
 	"sync"
 )
 
+// todo надо добавить комменты
 type NatsClient struct {
 	nc   stan.Conn
 	subs map[string]stan.Subscription
