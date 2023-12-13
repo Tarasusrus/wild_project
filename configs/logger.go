@@ -1,40 +1,53 @@
 package configs
 
 import (
+	"context"
+	"gorm.io/gorm/logger"
 	"log"
 	"os"
+	"time"
 )
 
-// UniversalLogger определяет интерфейс для универсального логгера
-type UniversalLogger interface {
-	Infof(format string, args ...interface{})
-	Warnf(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
+type GormLoggerAdapter struct {
+	*log.Logger
+	logLevel logger.LogLevel
 }
 
-// MyLogger является реализацией UniversalLogger
-type MyLogger struct {
-	logger *log.Logger
-}
-
-// NewLogger создает новый экземпляр MyLogger
-func NewLogger() *MyLogger {
-	return &MyLogger{
-		logger: log.New(os.Stdout, "\r\n", log.LstdFlags),
+func NewGormLoggerAdapter() logger.Interface {
+	return &GormLoggerAdapter{
+		Logger:   log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logLevel: logger.Info, // Установите начальный уровень логирования
 	}
 }
 
-// Infof реализует логирование уровня Info
-func (l *MyLogger) Infof(format string, args ...interface{}) {
-	l.logger.Printf("INFO: "+format, args...)
+func (l *GormLoggerAdapter) LogMode(level logger.LogLevel) logger.Interface {
+	l.logLevel = level
+	return l
 }
 
-// Warnf реализует логирование уровня Warn
-func (l *MyLogger) Warnf(format string, args ...interface{}) {
-	l.logger.Printf("WARN: "+format, args...)
+// Реализация других методов с учетом уровня логирования
+func (l *GormLoggerAdapter) Info(ctx context.Context, msg string, data ...interface{}) {
+	if l.logLevel >= logger.Info {
+		l.Printf("INFO: "+msg, data...)
+	}
 }
 
-// Errorf реализует логирование уровня Error
-func (l *MyLogger) Errorf(format string, args ...interface{}) {
-	l.logger.Printf("ERROR: "+format, args...)
+func (l *GormLoggerAdapter) Warn(ctx context.Context, msg string, data ...interface{}) {
+	if l.logLevel >= logger.Warn {
+		l.Printf("WARN: "+msg, data...)
+	}
+}
+
+func (l *GormLoggerAdapter) Error(ctx context.Context, msg string, data ...interface{}) {
+	if l.logLevel >= logger.Error {
+		l.Printf("ERROR: "+msg, data...)
+	}
+}
+
+func (l *GormLoggerAdapter) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	if l.logLevel >= logger.Info {
+		elapsed := time.Since(begin)
+		sql, rows := fc()
+		l.Printf("TRACE: %s [%vms] - Rows affected: %d - Error: %v", sql, float64(elapsed.Milliseconds()), rows, err)
+	}
 }
