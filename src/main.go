@@ -110,5 +110,3 @@ func main() {
 		}
 	}
 }
-
-// to do
