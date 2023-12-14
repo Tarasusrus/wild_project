@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 	"wild_project/src/cache"
+	"wild_project/src/handlers"
 	"wild_project/src/models"
 	natsclient "wild_project/src/nats"
 	"wild_project/src/tests"
@@ -93,8 +94,14 @@ func main() {
 			Natslogger.Printf("Заказ успешно сохранен в БД: %v", order.OrderUID)
 		}
 	})
+
 	if err != nil {
 		Natslogger.Fatalf("Ошибка при подписке: %v", err)
+	}
+
+	// Запуск HTTP-сервера
+	if err := handlers.StartServer(orderCache, "8080"); err != nil {
+		log.Fatalf("Failed to start HTTP server: %v", err)
 	}
 
 	// Генерация и отправка тестовых сообщений в NATS Streaming
