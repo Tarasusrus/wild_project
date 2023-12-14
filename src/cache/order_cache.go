@@ -48,4 +48,24 @@ func (oc *OrderCache) SaveToDB(db *gorm.DB, order models.Order, logger *log.Logg
 	return nil
 }
 
+// LoadFromDB принимает объект базы данных *gorm.DB в качестве параметра и выполняет запрос на получение всех заказов.
+func (oc *OrderCache) LoadFromDB(db *gorm.DB) error {
+	var orders []models.Order
+	if err := db.Find(&orders).Error; err != nil {
+		return err
+	}
+
+	for _, order := range orders {
+		oc.Add(order)
+	}
+	return nil
+}
+
+// Count возвращает количество заказов в кэше
+func (oc *OrderCache) Count() int {
+	oc.mu.RLock()
+	defer oc.mu.RUnlock()
+	return len(oc.orders)
+}
+
 // todo надо еще тащить заказ из кеша и залогировать это, еще сделать логи по папкам в одной портянке будет тяжело разобраться
