@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Information</title>
+    <script>
+        function fetchOrder() {
+            var orderId = document.getElementById('order-id').value;
+            fetch('/order?id=' + orderId)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('order-info').textContent = JSON.stringify(data, null, 2);
+                })
+                .catch(error => {
+                    document.getElementById('order-info').textContent = 'Order not found';
+                });
+        }
+    </script>
+</head>
+<body>
+<h1>Order Information</h1>
+<input type="text" id="order-id" placeholder="Enter Order ID">
+<button onclick="fetchOrder()">Get Order</button>
+<pre id="order-info"></pre>
+</body>
+</html>
