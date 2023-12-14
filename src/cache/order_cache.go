@@ -3,9 +3,35 @@ package cache
 import (
 	"gorm.io/gorm"
 	"log"
+	"os"
 	"sync"
 	"wild_project/src/models"
 )
+
+var logger *log.Logger
+
+func init() {
+	logDir := "logs"
+	logFile := "cache.log"
+	fullPath := logDir + "/" + logFile
+
+	// Проверка на существование папки для логов
+	if _, err := os.Stat(logDir); os.IsNotExist(err) {
+		err := os.Mkdir(logDir, 0755)
+		if err != nil {
+			log.Fatalln("Failed to create log directory:", err)
+		}
+	}
+
+	// Открытие файла логов с созданием, если он не существует
+	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalln("Failed to open log file:", err)
+	}
+
+	// Инициализация глобального логгера для этого пакета
+	logger = log.New(file, "CACHE: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
 
 // OrderCache структура для кеширования заказов
 type OrderCache struct {
@@ -25,6 +51,7 @@ func (oc *OrderCache) Add(order models.Order) {
 	oc.mu.Lock()
 	defer oc.mu.Unlock()
 	oc.orders[order.OrderUID] = order
+	logger.Println("Order added to cache:", order.OrderUID)
 }
 
 // Get извлекает заказ из кеша по его уникальному идентификатору
