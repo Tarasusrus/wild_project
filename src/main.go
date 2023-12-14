@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"time"
+	"wild_project/src/cache"
 	"wild_project/src/models"
 	natsclient "wild_project/src/nats"
 	"wild_project/src/tests"
@@ -57,6 +58,23 @@ func main() {
 	}
 	Natslogger.Println("Миграция успешно завершена")
 
+	// Инициализация кэша
+	orderCache := cache.NewOrderCache()
+
+	// Получение количества элементов в кэше
+	cacheSizeBefore := orderCache.Count()
+	log.Printf("Количество элементов в кэше: %d", cacheSizeBefore)
+
+	// Загрузка данных из БД в кэш
+	if err := orderCache.LoadFromDB(db); err != nil {
+		Natslogger.Fatalf("Ошибка при загрузке данных из БД в кэш: %v", err)
+	}
+	Natslogger.Println("Данные успешно загружены из БД в кэш")
+
+	// Получение количества элементов в кэше
+	cacheSizeAfter := orderCache.Count()
+	log.Printf("Количество элементов в кэше: %d", cacheSizeAfter)
+
 	// Подписка на канал в NATS Streaming
 	err = client.Subscribe(channelName, func(m *stan.Msg) {
 		Natslogger.Printf("Получено сообщение: %s\n", string(m.Data))
@@ -80,7 +98,7 @@ func main() {
 	}
 
 	// Генерация и отправка тестовых сообщений в NATS Streaming
-	messages, err := tests.GenerateTestMessages(10)
+	messages, err := tests.GenerateTestMessages(1)
 	if err != nil {
 		Natslogger.Fatalf("Ошибка при генерации тестовых сообщений: %v", err)
 	}
