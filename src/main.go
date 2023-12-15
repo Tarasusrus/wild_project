@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"github.com/nats-io/stan.go"
+	"gopkg.in/natefinch/lumberjack.v2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -23,9 +25,23 @@ const (
 	channelName = "tests-channel"
 )
 
+var mainLog *log.Logger
+var filePath = "logs/mainLog.log"
+
+func init() {
+	mainLog = log.New(&lumberjack.Logger{
+		Filename:   filePath,
+		MaxSize:    10,   // Размер файла в мегабайтах до ротации
+		MaxBackups: 3,    // Максимальное количество старых файлов логов
+		MaxAge:     28,   // Максимальное количество дней для хранения логов
+		Compress:   true, // Включение сжатия для старых файлов логов
+	}, "CACHE: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
 func main() {
+	cwd, _ := os.Getwd()
+	log.Println("Текущий рабочий каталог:", cwd)
 	// Инициализация логгера
-	Natslogger := log.New(os.Stdout, "WARN: ", log.Ldate|log.Ltime|log.Lshortfile)
 	gormLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
 		logger.Config{
@@ -40,7 +56,7 @@ func main() {
 	// Подключение к NATS Streaming
 	client, err := natsclient.NewNatsClient(natsURL, clusterID, clientID)
 	if err != nil {
-		Natslogger.Fatalf("Failed to create NATS client: %v", err)
+		mainLog.Fatalf("Failed to create NATS client: %v", err)
 	}
 	defer client.Close()
 
@@ -48,16 +64,16 @@ func main() {
 	dsn := "user=admin password=root dbname=mydatabase sslmode=disable host=localhost port=5433"
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: gormLogger})
 	if err != nil {
-		Natslogger.Fatalf("Ошибка подключения к базе данных: %v", err)
+		mainLog.Fatalf("Ошибка подключения к базе данных: %v", err)
 	}
-	Natslogger.Println("Успешное подключение к базе данных")
+	mainLog.Println("Успешное подключение к базе данных")
 
 	// Автоматическая миграция моделей
 	err = db.AutoMigrate(&models.Order{}, &models.Delivery{}, &models.Payment{}, &models.Items{})
 	if err != nil {
-		Natslogger.Fatalf("Ошибка миграции: %v", err)
+		mainLog.Fatalf("Ошибка миграции: %v", err)
 	}
-	Natslogger.Println("Миграция успешно завершена")
+	mainLog.Println("Миграция успешно завершена")
 
 	// Инициализация кэша
 	orderCache := cache.NewOrderCache()
@@ -68,52 +84,81 @@ func main() {
 
 	// Загрузка данных из БД в кэш
 	if err := orderCache.LoadFromDB(db); err != nil {
-		Natslogger.Fatalf("Ошибка при загрузке данных из БД в кэш: %v", err)
+		mainLog.Fatalf("Ошибка при загрузке данных из БД в кэш: %v", err)
 	}
-	Natslogger.Println("Данные успешно загружены из БД в кэш")
+	mainLog.Println("Данные успешно загружены из БД в кэш")
 
 	// Получение количества элементов в кэше
 	cacheSizeAfter := orderCache.Count()
 	log.Printf("Количество элементов в кэше: %d", cacheSizeAfter)
 
-	// Подписка на канал в NATS Streaming
-	err = client.Subscribe(channelName, func(m *stan.Msg) {
-		Natslogger.Printf("Получено сообщение: %s\n", string(m.Data))
+	go func() {
+		err = client.Subscribe(channelName, func(m *stan.Msg) {
+			mainLog.Printf("Получено новое сообщение: %s\n", string(m.Data))
 
-		// Десериализация сообщения
-		order, err := utils.DeserializeOrder(string(m.Data))
+			// Десериализация сообщения
+			order, err := utils.DeserializeOrder(string(m.Data))
+			if err != nil {
+				mainLog.Printf("Ошибка десериализации заказа: %v", err)
+				return
+			}
+
+			// Валидация заказа
+			if err := utils.ValidateOrder(&order); err != nil {
+				log.Printf("Ошибка валидации заказа: %v", err)
+				mainLog.Printf("Ошибка валидации заказа: %v", err)
+				return
+			}
+
+			// Проверка наличия заказа в кэше
+			if _, exists := orderCache.Get(order.OrderUID); exists {
+				mainLog.Printf("Заказ уже есть в кэше: %v", order.OrderUID)
+				return // Заказ уже есть в кэше, не сохраняем в БД
+			}
+
+			// Проверка наличия заказа в БД
+			var dbOrder models.Order
+			if err := db.Where("order_uid = ?", order.OrderUID).First(&dbOrder).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					// Заказа нет в БД, сохраняем его
+					if err := db.Create(&order).Error; err != nil {
+						mainLog.Printf("Ошибка при сохранении заказа в БД: %v", err)
+						return
+					}
+					orderCache.Add(order) // Добавляем заказ в кэш
+					mainLog.Printf("Заказ добавлен в БД и кэш: %v", order.OrderUID)
+				} else {
+					mainLog.Printf("Ошибка при запросе к БД: %v", err)
+				}
+			} else {
+				// Заказ уже есть в БД, добавляем в кэш, если он отсутствует
+				orderCache.Add(dbOrder)
+				mainLog.Printf("Заказ из БД добавлен в кэш: %v", order.OrderUID)
+			}
+		})
 		if err != nil {
-			Natslogger.Printf("Ошибка десериализации заказа: %v", err)
-			return
+			mainLog.Fatalf("Ошибка при подписке: %v", err)
 		}
-
-		// Сохранение заказа в базу данных
-		if err := db.Create(&order).Error; err != nil {
-			Natslogger.Printf("Ошибка при сохранении заказа в БД: %v", err)
-		} else {
-			Natslogger.Printf("Заказ успешно сохранен в БД: %v", order.OrderUID)
-		}
-	})
-
-	if err != nil {
-		Natslogger.Fatalf("Ошибка при подписке: %v", err)
-	}
-
-	// Запуск HTTP-сервера
-	if err := handlers.StartServer(orderCache, "8080"); err != nil {
-		log.Fatalf("Failed to start HTTP server: %v", err)
-	}
+	}()
 
 	// Генерация и отправка тестовых сообщений в NATS Streaming
-	messages, err := tests.GenerateTestMessages(1)
-	if err != nil {
-		Natslogger.Fatalf("Ошибка при генерации тестовых сообщений: %v", err)
-	}
-
-	for _, message := range messages {
-		err = client.PublishMessage(channelName, []byte(message))
+	go func() {
+		messages, err := tests.GenerateTestMessages(121)
 		if err != nil {
-			Natslogger.Printf("Ошибка при отправке сообщения: %v", err)
+			mainLog.Fatalf("Ошибка при генерации тестовых сообщений: %v", err)
 		}
+
+		for _, message := range messages {
+			err = client.PublishMessage(channelName, []byte(message))
+			if err != nil {
+				mainLog.Printf("Ошибка при отправке сообщения: %v", err)
+			}
+		}
+	}()
+	// Запуск HTTP-сервера
+	if err := handlers.StartServer(orderCache, db, client, "8080"); err != nil {
+		log.Fatalf("Failed to start HTTP server: %v", err)
 	}
+	select {}
+
 }
