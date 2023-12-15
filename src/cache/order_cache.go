@@ -1,36 +1,25 @@
 package cache
 
 import (
+	"gopkg.in/natefinch/lumberjack.v2"
 	"gorm.io/gorm"
 	"log"
-	"os"
 	"sync"
+	"time"
 	"wild_project/src/models"
 )
 
 var logger *log.Logger
+var filePath = "logs/cache.log"
 
 func init() {
-	logDir := "logs"
-	logFile := "cache.log"
-	fullPath := logDir + "/" + logFile
-
-	// Проверка на существование папки для логов
-	if _, err := os.Stat(logDir); os.IsNotExist(err) {
-		err := os.Mkdir(logDir, 0755)
-		if err != nil {
-			log.Fatalln("Failed to create log directory:", err)
-		}
-	}
-
-	// Открытие файла логов с созданием, если он не существует
-	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalln("Failed to open log file:", err)
-	}
-
-	// Инициализация глобального логгера для этого пакета
-	logger = log.New(file, "CACHE: ", log.Ldate|log.Ltime|log.Lshortfile)
+	logger = log.New(&lumberjack.Logger{
+		Filename:   filePath,
+		MaxSize:    10,   // Размер файла в мегабайтах до ротации
+		MaxBackups: 3,    // Максимальное количество старых файлов логов
+		MaxAge:     28,   // Максимальное количество дней для хранения логов
+		Compress:   true, // Включение сжатия для старых файлов логов
+	}, "CACHE: ", log.Ldate|log.Ltime|log.Lshortfile)
 }
 
 // OrderCache структура для кеширования заказов
@@ -48,6 +37,11 @@ func NewOrderCache() *OrderCache {
 
 // Add добавляет заказ в кеш
 func (oc *OrderCache) Add(order models.Order) {
+	startTime := time.Now()
+	defer func() {
+		logger.Printf("Add выполнена за %s", time.Since(startTime))
+	}()
+
 	oc.mu.Lock()
 	defer oc.mu.Unlock()
 	oc.orders[order.OrderUID] = order
@@ -56,6 +50,11 @@ func (oc *OrderCache) Add(order models.Order) {
 
 // Get извлекает заказ из кеша по его уникальному идентификатору
 func (oc *OrderCache) Get(orderUID string) (models.Order, bool) {
+	startTime := time.Now()
+	defer func() {
+		logger.Printf("Get выполнена за %s", time.Since(startTime))
+	}()
+
 	oc.mu.RLock()
 	defer oc.mu.RUnlock()
 	order, exists := oc.orders[orderUID]
@@ -63,7 +62,12 @@ func (oc *OrderCache) Get(orderUID string) (models.Order, bool) {
 }
 
 // SaveToDB сохраняет заказ в базу данных и добавляет его в кеш
-func (oc *OrderCache) SaveToDB(db *gorm.DB, order models.Order, logger *log.Logger) error {
+func (oc *OrderCache) SaveToDB(db *gorm.DB, order models.Order) error {
+	startTime := time.Now()
+	defer func() {
+		logger.Printf("SaveToDB выполнена за %s", time.Since(startTime))
+	}()
+
 	if _, exists := oc.Get(order.OrderUID); !exists {
 		if err := db.Create(&order).Error; err != nil {
 			logger.Printf("Ошибка при сохранении заказа в БД: %v", err)
@@ -77,6 +81,11 @@ func (oc *OrderCache) SaveToDB(db *gorm.DB, order models.Order, logger *log.Logg
 
 // LoadFromDB принимает объект базы данных *gorm.DB в качестве параметра и выполняет запрос на получение всех заказов.
 func (oc *OrderCache) LoadFromDB(db *gorm.DB) error {
+	startTime := time.Now()
+	defer func() {
+		logger.Printf("LoadFromDB выполнена за %s", time.Since(startTime))
+	}()
+
 	var orders []models.Order
 	if err := db.Find(&orders).Error; err != nil {
 		return err
@@ -90,9 +99,12 @@ func (oc *OrderCache) LoadFromDB(db *gorm.DB) error {
 
 // Count возвращает количество заказов в кэше
 func (oc *OrderCache) Count() int {
+	startTime := time.Now()
+	defer func() {
+		logger.Printf("Count выполнена за %s", time.Since(startTime))
+	}()
+
 	oc.mu.RLock()
 	defer oc.mu.RUnlock()
 	return len(oc.orders)
 }
-
-// todo надо еще тащить заказ из кеша и залогировать это, еще сделать логи по папкам в одной портянке будет тяжело разобраться
