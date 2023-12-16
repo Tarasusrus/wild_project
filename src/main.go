@@ -143,7 +143,7 @@ func main() {
 
 	// Генерация и отправка тестовых сообщений в NATS Streaming
 	go func() {
-		messages, err := tests.GenerateTestMessages(121)
+		messages, err := tests.GenerateTestMessages(126)
 		if err != nil {
 			mainLog.Fatalf("Ошибка при генерации тестовых сообщений: %v", err)
 		}
