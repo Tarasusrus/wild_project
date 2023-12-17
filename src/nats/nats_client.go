@@ -9,19 +9,21 @@ import (
 	"sync"
 )
 
-// todo надо добавить комменты
+// NatsClient хранит экземпляр соединения, карту подписок и мьютекс для синхронизации
 type NatsClient struct {
-	nc   stan.Conn
-	subs map[string]stan.Subscription
-	mu   sync.Mutex
+	nc     stan.Conn
+	subs   map[string]stan.Subscription
+	mu     sync.Mutex
+	logger *log.Logger
 }
 
+// NewNatsClient устанавливает новое соединение с сервером NATS Streaming и возвращает новый NatsClient
 func NewNatsClient(url string, clusterID string, clientID string) (*NatsClient, error) {
 	logger := log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	nc, err := stan.Connect(clusterID, clientID, stan.NatsURL(url),
 		stan.SetConnectionLostHandler(func(_ stan.Conn, reason error) {
-			logger.Println("Connection lost, reason: %v", reason)
+			logger.Println("Соединение потеряно, причина: %v", reason)
 		}),
 	)
 
@@ -31,68 +33,73 @@ func NewNatsClient(url string, clusterID string, clientID string) (*NatsClient, 
 
 	// Возвращение нового экземпляра NatsClient
 	return &NatsClient{
-		nc:   nc,
-		subs: make(map[string]stan.Subscription),
+		nc:     nc,
+		subs:   make(map[string]stan.Subscription),
+		logger: logger,
 	}, nil
 }
 
+// Subscribe подписывается на тему
 func (c *NatsClient) Subscribe(topic string, handler stan.MsgHandler) error {
-	logger := log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if _, exists := c.subs[topic]; exists {
-		logger.Println("Already subscribed to topic: %s", topic)
+		c.logger.Println("Уже подписаны на тему: %s", topic)
 		return nil // Или возвращаем ошибку, если подписка уже существует
 	}
 
 	sub, err := c.nc.Subscribe(topic, handler, stan.DurableName("my-durable"))
 	if err != nil {
-		logger.Println("Failed to subscribe to topic %s: %v", topic, err)
+		c.logger.Println("Не удалось подписаться на тему %s: %v", topic, err)
 		return err
 	}
 
 	c.subs[topic] = sub
-	logger.Println("Subscribed to topic: %s", topic)
+	c.logger.Println("Subscribed to topic: %s", topic)
 	return nil
 }
 
+// Unsubscribe отписывается от темы
 func (c *NatsClient) Unsubscribe(topic string) error {
-	logger := log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	sub, ok := c.subs[topic]
 	if !ok {
-		errorMessage := fmt.Sprintf("Subscription not found for topic: %s", topic)
-		logger.Println(errorMessage)
+		errorMessage := fmt.Sprintf("Подписка не найдена для темы: %s", topic)
+		c.logger.Println(errorMessage)
 		return errors.New(errorMessage)
 	}
 
 	err := sub.Unsubscribe()
 	if err != nil {
-		logger.Println("Failed to unsubscribe from topic %s: %v", topic, err)
+		c.logger.Println("Failed to unsubscribe from topic %s: %v", topic, err)
 		return err
 	}
 
 	delete(c.subs, topic)
-	logger.Println("Unsubscribed from topic: %s", topic)
+	c.logger.Println("Unsubscribed from topic: %s", topic)
 	return nil
 }
 
+// PublishMessage публикует новое сообщение на тему
 func (c *NatsClient) PublishMessage(topic string, message []byte) error {
-	logger := log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	err := c.nc.Publish(topic, message)
 	if err != nil {
-		logger.Println("Failed to publish message to topic %s: %v", topic, err)
+		c.logger.Println("Failed to publish message to topic %s: %v", topic, err)
 		return err
 	}
-	logger.Println("Message published to topic: %s", topic)
+	c.logger.Println("Сообщение опубликовано в тему: %s", topic)
 	return nil
 }
 
-func (c *NatsClient) Close() {
-	c.nc.Close() // Закрытие соединения с NATS Streaming
-	logger := log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	logger.Println("The connection sucsesfull closed")
+// Close закрывает соединение с сервером NATS Streaming
+func (c *NatsClient) Close() error {
+	err := c.nc.Close()
+	if err != nil {
+		return err
+	}
+	c.logger.Println("Соединение успешно закрыто")
+	return nil
 }
