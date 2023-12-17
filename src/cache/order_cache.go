@@ -9,17 +9,26 @@ import (
 	"wild_project/src/models"
 )
 
-var logger *log.Logger
-var filePath = "logs/cache.log"
+const (
+	logFilePath = "logs/cache.log"
+	logFlag     = log.Ldate | log.Ltime | log.Lshortfile
+	logPrefix   = "CACHE: "
+	maxSize     = 2
+	maxBackups  = 3
+	maxAge      = 28
+)
 
-func init() {
-	logger = log.New(&lumberjack.Logger{
+var logger = createLogger(logFilePath)
+
+// createLogger returns a configured Logger.
+func createLogger(filePath string) *log.Logger {
+	return log.New(&lumberjack.Logger{
 		Filename:   filePath,
-		MaxSize:    10,   // Размер файла в мегабайтах до ротации
-		MaxBackups: 3,    // Максимальное количество старых файлов логов
-		MaxAge:     28,   // Максимальное количество дней для хранения логов
-		Compress:   true, // Включение сжатия для старых файлов логов
-	}, "CACHE: ", log.Ldate|log.Ltime|log.Lshortfile)
+		MaxSize:    maxSize,
+		MaxBackups: maxBackups,
+		MaxAge:     maxAge,
+		Compress:   true,
+	}, logPrefix, logFlag)
 }
 
 // OrderCache структура для кеширования заказов
