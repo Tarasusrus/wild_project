@@ -16,15 +16,19 @@ func DeserializeOrder(jsonOrder string) (models.Order, error) {
 	return order, nil
 }
 
-// ValidateOrder проверяет корректность данных заказа
-// todo эту функцию можно расширить добавив проверку типа данных каждого поля, диапазона сообщения...
+// Сообщения с ошибками
+const (
+	ErrMissingOrderUID    = "отсутствует Order UID"
+	ErrMissingTrackNumber = "отсутствует Order track number"
+)
+
+// ValidateOrder пример валидации полей
 func ValidateOrder(order *models.Order) error {
 	if order.OrderUID == "" {
-		return errors.New("Ошибка в order UID")
+		return errors.New(ErrMissingOrderUID)
 	}
 	if order.TrackNumber == "" {
-		return errors.New("Ошибка в track number")
+		return errors.New(ErrMissingTrackNumber)
 	}
-
 	return nil
 }
