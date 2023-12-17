@@ -40,6 +40,20 @@ func init() {
 	}, "CACHE: ", log.Ldate|log.Ltime|log.Lshortfile)
 }
 
+func loadAndCheckCache(orderCache *cache.OrderCache, db *gorm.DB) {
+	// Проверка кеша до подключения к БД и после с сообщением о успешной загрузке кеша из БД
+	cacheSizeBefore := orderCache.Count()
+	mainLog.Printf("В кеше до загрузки даты : %d", cacheSizeBefore)
+	// Из БД в кеш
+	if err := orderCache.LoadFromDB(db); err != nil {
+		mainLog.Fatalf("Ошибка в загрузке даты из БД: %v", err)
+	}
+	mainLog.Println("Дата успешно загрузилась")
+	// Смотрим количество запискей в кеше
+	cacheSizeAfter := orderCache.Count()
+	mainLog.Printf("В кеше после загрузки даты : %d", cacheSizeAfter)
+}
+
 func main() {
 	cwd, _ := os.Getwd()
 	log.Println("Текущий рабочий каталог:", cwd)
@@ -58,7 +72,7 @@ func main() {
 	// Подключение к NATS Streaming
 	client, err := natsclient.NewNatsClient(natsURL, clusterID, clientID)
 	if err != nil {
-		mainLog.Fatalf("Failed to create NATS client: %v", err)
+		mainLog.Fatalf("Ошибка в создании клиента NAts: %v", err)
 	}
 	defer client.Close()
 
@@ -77,22 +91,9 @@ func main() {
 	}
 	mainLog.Println("Миграция успешно завершена")
 
-	// Инициализация кэша
+	// Инициализация кэша и копирование из бд
 	orderCache := cache.NewOrderCache()
-
-	// Получение количества элементов в кэше
-	cacheSizeBefore := orderCache.Count()
-	log.Printf("Количество элементов в кэше: %d", cacheSizeBefore)
-
-	// Загрузка данных из БД в кэш
-	if err := orderCache.LoadFromDB(db); err != nil {
-		mainLog.Fatalf("Ошибка при загрузке данных из БД в кэш: %v", err)
-	}
-	mainLog.Println("Данные успешно загружены из БД в кэш")
-
-	// Получение количества элементов в кэше
-	cacheSizeAfter := orderCache.Count()
-	log.Printf("Количество элементов в кэше: %d", cacheSizeAfter)
+	loadAndCheckCache(orderCache, db)
 
 	go func() {
 		err = client.Subscribe(channelName, func(m *stan.Msg) {
@@ -159,7 +160,7 @@ func main() {
 	}()
 	// Запуск HTTP-сервера
 	if err := handlers.StartServer(orderCache, db, client, "8080"); err != nil {
-		log.Fatalf("Failed to start HTTP server: %v", err)
+		log.Fatalf("Ошибка во время запуска HTTP серваака: %v", err)
 	}
 	select {}
 
