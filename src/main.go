@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"github.com/nats-io/stan.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -95,54 +94,28 @@ func main() {
 	orderCache := cache.NewOrderCache()
 	loadAndCheckCache(orderCache, db)
 
-	go func() {
-		err = client.Subscribe(channelName, func(m *stan.Msg) {
-			mainLog.Printf("Получено новое сообщение: %s\n", string(m.Data))
+	// Подключение к NATS Streaming и подписка на канал
+	err = client.Subscribe(channelName, func(m *stan.Msg) {
+		mainLog.Printf("Получено новое сообщение: %s\n", string(m.Data))
 
-			// Десериализация сообщения
-			order, err := utils.DeserializeOrder(string(m.Data))
-			if err != nil {
-				mainLog.Printf("Ошибка десериализации заказа: %v", err)
-				return
-			}
+		// Обработка сообщения
+		utils.ProcessNatsMessage(orderCache, db, m)
+	})
+	if err != nil {
+		mainLog.Fatalf("Ошибка при подписке на канал NATS: %v", err)
+	}
 
-			// Валидация заказа
-			if err := utils.ValidateOrder(&order); err != nil {
-				log.Printf("Ошибка валидации заказа: %v", err)
-				mainLog.Printf("Ошибка валидации заказа: %v", err)
-				return
-			}
+	// Генерация и отправка тестовых сообщений в NATS Streaming
+	messages, err := tests.GenerateTestMessages(1)
+	if err != nil {
+		mainLog.Fatalf("Ошибка при генерации тестовых сообщений: %v", err)
+	}
 
-			// Проверка наличия заказа в кэше
-			if _, exists := orderCache.Get(order.OrderUID); exists {
-				mainLog.Printf("Заказ уже есть в кэше: %v", order.OrderUID)
-				return // Заказ уже есть в кэше, не сохраняем в БД
-			}
-
-			// Проверка наличия заказа в БД
-			var dbOrder models.Order
-			if err := db.Where("order_uid = ?", order.OrderUID).First(&dbOrder).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					// Заказа нет в БД, сохраняем его
-					if err := db.Create(&order).Error; err != nil {
-						mainLog.Printf("Ошибка при сохранении заказа в БД: %v", err)
-						return
-					}
-					orderCache.Add(order) // Добавляем заказ в кэш
-					mainLog.Printf("Заказ добавлен в БД и кэш: %v", order.OrderUID)
-				} else {
-					mainLog.Printf("Ошибка при запросе к БД: %v", err)
-				}
-			} else {
-				// Заказ уже есть в БД, добавляем в кэш, если он отсутствует
-				orderCache.Add(dbOrder)
-				mainLog.Printf("Заказ из БД добавлен в кэш: %v", order.OrderUID)
-			}
-		})
-		if err != nil {
-			mainLog.Fatalf("Ошибка при подписке: %v", err)
+	for _, message := range messages {
+		if err := client.PublishMessage(channelName, []byte(message)); err != nil {
+			mainLog.Printf("Ошибка при отправке сообщения: %v", err)
 		}
-	}()
+	}
 
 	// Генерация и отправка тестовых сообщений в NATS Streaming
 	go func() {
