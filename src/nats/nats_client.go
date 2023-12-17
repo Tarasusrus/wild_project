@@ -45,18 +45,18 @@ func (c *NatsClient) Subscribe(topic string, handler stan.MsgHandler) error {
 	defer c.mu.Unlock()
 
 	if _, exists := c.subs[topic]; exists {
-		c.logger.Println("Уже подписаны на тему: %s", topic)
+		c.logger.Printf("Уже подписаны на тему: %s", topic)
 		return nil // Или возвращаем ошибку, если подписка уже существует
 	}
 
 	sub, err := c.nc.Subscribe(topic, handler, stan.DurableName("my-durable"))
 	if err != nil {
-		c.logger.Println("Не удалось подписаться на тему %s: %v", topic, err)
+		c.logger.Printf("Не удалось подписаться на тему %s: %v", topic, err)
 		return err
 	}
 
 	c.subs[topic] = sub
-	c.logger.Println("Subscribed to topic: %s", topic)
+	c.logger.Printf("Subscribed to topic: %s", topic)
 	return nil
 }
 
@@ -74,12 +74,12 @@ func (c *NatsClient) Unsubscribe(topic string) error {
 
 	err := sub.Unsubscribe()
 	if err != nil {
-		c.logger.Println("Failed to unsubscribe from topic %s: %v", topic, err)
+		c.logger.Printf("Ошибка при отписке %s: %v", topic, err)
 		return err
 	}
 
 	delete(c.subs, topic)
-	c.logger.Println("Unsubscribed from topic: %s", topic)
+	c.logger.Printf("Unsubscribed from topic: %s", topic)
 	return nil
 }
 
@@ -87,10 +87,10 @@ func (c *NatsClient) Unsubscribe(topic string) error {
 func (c *NatsClient) PublishMessage(topic string, message []byte) error {
 	err := c.nc.Publish(topic, message)
 	if err != nil {
-		c.logger.Println("Failed to publish message to topic %s: %v", topic, err)
+		c.logger.Printf("Ошибка публикации сообщения %s: %v", topic, err)
 		return err
 	}
-	c.logger.Println("Сообщение опубликовано в тему: %s", topic)
+	c.logger.Printf("Сообщение опубликовано в тему: %s", message, topic)
 	return nil
 }
 
