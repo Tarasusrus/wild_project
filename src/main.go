@@ -3,11 +3,13 @@ package main
 import (
 	"errors"
 	"github.com/nats-io/stan.go"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"log"
+	"net/http"
 	"os"
 	"time"
 	"wild_project/src/cache"
@@ -52,7 +54,7 @@ func main() {
 			Colorful:                  false,       // Отключение цветов в логах
 		},
 	)
-
+	http.Handle("/metrics", promhttp.Handler())
 	// Подключение к NATS Streaming
 	client, err := natsclient.NewNatsClient(natsURL, clusterID, clientID)
 	if err != nil {
@@ -143,7 +145,7 @@ func main() {
 
 	// Генерация и отправка тестовых сообщений в NATS Streaming
 	go func() {
-		messages, err := tests.GenerateTestMessages(126)
+		messages, err := tests.GenerateTestMessages(1260)
 		if err != nil {
 			mainLog.Fatalf("Ошибка при генерации тестовых сообщений: %v", err)
 		}

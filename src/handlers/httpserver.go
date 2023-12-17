@@ -7,8 +7,10 @@ import (
 	"gorm.io/gorm"
 	"log"
 	"net/http"
+	"time"
 	"wild_project/src/cache"
 	"wild_project/src/models"
+	"wild_project/src/my_prometheus"
 	natsclient "wild_project/src/nats"
 )
 
@@ -35,20 +37,36 @@ func StartServer(oc *cache.OrderCache, db *gorm.DB, natsClient *natsclient.NatsC
 
 	// Обработчик API для получения информации о заказе
 	http.HandleFunc("/order", func(w http.ResponseWriter, r *http.Request) {
+		overallStart := time.Now()
+
 		// Извлечение ID заказа из запроса
 		orderID := r.URL.Query().Get("id")
 		logger.Printf("Получен запрос на заказ с ID: %s", orderID)
 
 		// Получение данных заказа из кэша
+		cacheStart := time.Now()
 		if order, exists := oc.Get(orderID); exists {
+			cacheDuration := time.Since(cacheStart).Seconds()
+			my_prometheus.CacheResponseTime.WithLabelValues("/order").Observe(cacheDuration)
+
 			json.NewEncoder(w).Encode(order)
 			logger.Printf("Найден в кеше ID: %s", orderID)
+
+			overallDuration := time.Since(overallStart).Seconds()
+			my_prometheus.OverallResponseTime.WithLabelValues("/order").Observe(overallDuration)
+			my_prometheus.TotalRequests.WithLabelValues("/order").Inc()
 			return
 		}
+		cacheDuration := time.Since(cacheStart).Seconds()
+		my_prometheus.CacheResponseTime.WithLabelValues("/order").Observe(cacheDuration)
 
-		// Идем в БД
+		// Если заказ не найден в кэше, идем в базу данных
+		dbStart := time.Now()
 		var order models.Order
 		if err := db.Where("order_uid = ?", orderID).First(&order).Error; err != nil {
+			dbDuration := time.Since(dbStart).Seconds()
+			my_prometheus.DbResponseTime.WithLabelValues("/order").Observe(dbDuration)
+
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				http.Error(w, "Order не найден", http.StatusNotFound)
 				logger.Printf("Order не найден ID: %s", orderID)
@@ -56,11 +74,22 @@ func StartServer(oc *cache.OrderCache, db *gorm.DB, natsClient *natsclient.NatsC
 				http.Error(w, "Ошибка в БД", http.StatusInternalServerError)
 				logger.Printf("Ошибка в БД: %s", orderID)
 			}
+
+			overallDuration := time.Since(overallStart).Seconds()
+			my_prometheus.OverallResponseTime.WithLabelValues("/order").Observe(overallDuration)
+			my_prometheus.TotalRequests.WithLabelValues("/order").Inc()
 			return
 		}
-		// Добавление заказа в кэш и отправка
+		dbDuration := time.Since(dbStart).Seconds()
+		my_prometheus.DbResponseTime.WithLabelValues("/order").Observe(dbDuration)
+
+		// Добавление заказа в кэш и отправка данных
 		oc.Add(order)
 		json.NewEncoder(w).Encode(order)
+
+		overallDuration := time.Since(overallStart).Seconds()
+		my_prometheus.OverallResponseTime.WithLabelValues("/order").Observe(overallDuration)
+		my_prometheus.TotalRequests.WithLabelValues("/order").Inc()
 	})
 
 	http.HandleFunc("/sendToNats", func(w http.ResponseWriter, r *http.Request) {
