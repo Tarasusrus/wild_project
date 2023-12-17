@@ -1,8 +1,0 @@
-port: "8000"
-
-db_go_proj:
-  username:
-  host:
-  port:
-  dbname:
-  sslmode:
